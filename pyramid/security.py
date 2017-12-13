@@ -16,18 +16,15 @@ Everyone = 'system.Everyone'
 Authenticated = 'system.Authenticated'
 Allow = 'Allow'
 Deny = 'Deny'
-
+Revoked = 'Revoked'
 _marker = object()
 
 class AllPermissionsList(object):
     """ Stand in 'permission list' to represent all permissions """
-
     def __iter__(self):
-        return iter(())
-
+        return ()
     def __contains__(self, other):
         return True
-
     def __eq__(self, other):
         return isinstance(other, self.__class__)
 
@@ -245,14 +242,6 @@ def view_execution_permitted(context, request, name=''):
 
 class PermitsResult(int):
     def __new__(cls, s, *args):
-        """
-        Create a new instance.
-
-        :param fmt: A format string explaining the reason for denial.
-        :param args: Arguments are stored and used with the format string
-                      to generate the ``msg``.
-
-        """
         inst = int.__new__(cls, cls.boolval)
         inst.s = s
         inst.args = args
@@ -260,7 +249,6 @@ class PermitsResult(int):
 
     @property
     def msg(self):
-        """ A string indicating why the result was generated."""
         return self.s % self.args
 
     def __str__(self):
@@ -272,52 +260,24 @@ class PermitsResult(int):
                                                     self.msg)
 
 class Denied(PermitsResult):
-    """
-    An instance of ``Denied`` is returned when a security-related
+    """ An instance of ``Denied`` is returned when a security-related
     API or other :app:`Pyramid` code denies an action unrelated to
     an ACL check.  It evaluates equal to all boolean false types.  It
     has an attribute named ``msg`` describing the circumstances for
-    the deny.
-
-    """
+    the deny."""
     boolval = 0
 
 class Allowed(PermitsResult):
-    """
-    An instance of ``Allowed`` is returned when a security-related
+    """ An instance of ``Allowed`` is returned when a security-related
     API or other :app:`Pyramid` code allows an action unrelated to
     an ACL check.  It evaluates equal to all boolean true types.  It
     has an attribute named ``msg`` describing the circumstances for
-    the allow.
-
-    """
+    the allow."""
     boolval = 1
 
-class ACLPermitsResult(PermitsResult):
+class ACLPermitsResult(int):
     def __new__(cls, ace, acl, permission, principals, context):
-        """
-        Create a new instance.
-
-        :param ace: The :term:`ACE` that matched, triggering the result.
-        :param acl: The :term:`ACL` containing ``ace``.
-        :param permission: The required :term:`permission`.
-        :param principals: The list of :term:`principals <principal>` provided.
-        :param context: The :term:`context` providing the :term:`lineage`
-                        searched.
-
-        """
-        fmt = ('%s permission %r via ACE %r in ACL %r on context %r for '
-               'principals %r')
-        inst = PermitsResult.__new__(
-            cls,
-            fmt,
-            cls.__name__,
-            permission,
-            ace,
-            acl,
-            context,
-            principals,
-        )
+        inst = int.__new__(cls, cls.boolval)
         inst.permission = permission
         inst.ace = ace
         inst.acl = acl
@@ -325,31 +285,44 @@ class ACLPermitsResult(PermitsResult):
         inst.context = context
         return inst
 
-class ACLDenied(ACLPermitsResult, Denied):
-    """
-    An instance of ``ACLDenied`` is a specialization of
-    :class:`pyramid.security.Denied` that represents that a security check
-    made explicitly against ACL was denied.  It evaluates equal to all
-    boolean false types.  It also has the following attributes: ``acl``,
-    ``ace``, ``permission``, ``principals``, and ``context``.  These
-    attributes indicate the security values involved in the request.  Its
-    ``__str__`` method prints a summary of these attributes for debugging
-    purposes. The same summary is available as the ``msg`` attribute.
+    @property
+    def msg(self):
+        s = ('%s permission %r via ACE %r in ACL %r on context %r for '
+             'principals %r')
+        return s % (self.__class__.__name__,
+                    self.permission,
+                    self.ace,
+                    self.acl,
+                    self.context,
+                    self.principals)
 
-    """
+    def __str__(self):
+        return self.msg
 
-class ACLAllowed(ACLPermitsResult, Allowed):
-    """
-    An instance of ``ACLAllowed`` is a specialization of
-    :class:`pyramid.security.Allowed` that represents that a security check
-    made explicitly against ACL was allowed.  It evaluates equal to all
-    boolean true types.  It also has the following attributes: ``acl``,
-    ``ace``, ``permission``, ``principals``, and ``context``.  These
-    attributes indicate the security values involved in the request.  Its
-    ``__str__`` method prints a summary of these attributes for debugging
-    purposes. The same summary is available as the ``msg`` attribute.
+    def __repr__(self):
+        return '<%s instance at %s with msg %r>' % (self.__class__.__name__,
+                                                    id(self),
+                                                    self.msg)
 
-    """
+class ACLDenied(ACLPermitsResult):
+    """ An instance of ``ACLDenied`` represents that a security check made
+    explicitly against ACL was denied.  It evaluates equal to all boolean
+    false types.  It also has the following attributes: ``acl``, ``ace``,
+    ``permission``, ``principals``, and ``context``.  These attributes
+    indicate the security values involved in the request.  Its __str__ method
+    prints a summary of these attributes for debugging purposes.  The same
+    summary is available as the ``msg`` attribute."""
+    boolval = 0
+
+class ACLAllowed(ACLPermitsResult):
+    """ An instance of ``ACLAllowed`` represents that a security check made
+    explicitly against ACL was allowed.  It evaluates equal to all boolean
+    true types.  It also has the following attributes: ``acl``, ``ace``,
+    ``permission``, ``principals``, and ``context``.  These attributes
+    indicate the security values involved in the request.  Its __str__ method
+    prints a summary of these attributes for debugging purposes.  The same
+    summary is available as the ``msg`` attribute."""
+    boolval = 1
 
 class AuthenticationAPIMixin(object):
 
@@ -419,8 +392,7 @@ class AuthorizationAPIMixin(object):
         :type permission: unicode, str
         :param context: A resource object or ``None``
         :type context: object
-        :returns: Either :class:`pyramid.security.Allowed` or
-                  :class:`pyramid.security.Denied`.
+        :returns: `pyramid.security.PermitsResult`
 
         .. versionadded:: 1.5
 
