@@ -98,6 +98,8 @@ class ACLAuthorizationPolicy(object):
 
         # default deny (if no ACL in lineage at all, or if none of the
         # principals were mentioned in any ACE we found)
+        if acl[0][0] == 'Revoked' :
+            context.request.response.status_int = 406
         return ACLDenied(
             '<default deny>',
             acl,
